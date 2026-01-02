@@ -213,7 +213,7 @@ class MainWindow(ctk.CTk):
             self.update_status(f"Selected: {folder_path}")
 
     def _scan_library(self):
-        """Scan library in background thread with parallel processing."""
+        """Smart scan library - only processes new or modified files."""
         if not self.current_folder:
             self.update_status("Please select a folder first")
             return
@@ -227,46 +227,94 @@ class MainWindow(ctk.CTk):
                 files = self.metadata_handler.scan_directory(self.current_folder, recursive=True)
                 total_files = len(files)
 
-                self.update_status(f"Found {total_files} files, reading metadata...")
+                self.update_status(f"Found {total_files} files, checking which need processing...")
+
+                # Get existing files from database
+                existing_files = {f['file_path']: f for f in self.db.get_all_files()}
+
+                # Determine which files need processing
+                files_to_process = []
+                skipped_count = 0
+
+                for file_path in files:
+                    if file_path in existing_files:
+                        # Check if file was modified since last scan
+                        file_mtime = os.path.getmtime(file_path)
+                        db_record = existing_files[file_path]
+
+                        # Parse last_modified from database (it's a string timestamp)
+                        from datetime import datetime
+                        db_modified = db_record.get('last_modified')
+
+                        if db_modified:
+                            try:
+                                db_time = datetime.fromisoformat(db_modified).timestamp()
+
+                                # Only process if file is newer than database record
+                                if file_mtime > db_time + 1:  # 1 second tolerance
+                                    files_to_process.append(file_path)
+                                else:
+                                    skipped_count += 1
+                            except:
+                                # If can't parse date, process the file
+                                files_to_process.append(file_path)
+                        else:
+                            files_to_process.append(file_path)
+                    else:
+                        # New file, needs processing
+                        files_to_process.append(file_path)
+
+                # Show scan strategy
+                if skipped_count > 0:
+                    self.update_status(
+                        f"Smart scan: {len(files_to_process)} new/modified, {skipped_count} unchanged (skipped)"
+                    )
+                else:
+                    self.update_status(f"Processing {len(files_to_process)} files...")
 
                 # Read metadata in parallel using ThreadPoolExecutor
                 metadata_list = []
                 processed_count = 0
 
-                # Use number of CPU cores for parallel processing
-                max_workers = min(8, os.cpu_count() or 4)
+                if len(files_to_process) > 0:
+                    # Use number of CPU cores for parallel processing
+                    max_workers = min(8, os.cpu_count() or 4)
 
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    # Submit all tasks
-                    future_to_file = {
-                        executor.submit(self.metadata_handler.read_metadata, file_path): file_path
-                        for file_path in files
-                    }
+                    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                        # Submit all tasks
+                        future_to_file = {
+                            executor.submit(self.metadata_handler.read_metadata, file_path): file_path
+                            for file_path in files_to_process
+                        }
 
-                    # Process results as they complete
-                    for future in as_completed(future_to_file):
-                        try:
-                            metadata = future.result()
-                            if metadata:
-                                metadata_list.append(metadata)
+                        # Process results as they complete
+                        for future in as_completed(future_to_file):
+                            try:
+                                metadata = future.result()
+                                if metadata:
+                                    metadata_list.append(metadata)
 
-                            processed_count += 1
+                                processed_count += 1
 
-                            # Update progress more frequently
-                            if processed_count % 5 == 0 or processed_count == total_files:
-                                percentage = int((processed_count / total_files) * 100)
-                                self.update_status(
-                                    f"Processing {processed_count} of {total_files} files ({percentage}%)..."
-                                )
+                                # Update progress more frequently
+                                if processed_count % 5 == 0 or processed_count == len(files_to_process):
+                                    percentage = int((processed_count / len(files_to_process)) * 100)
+                                    self.update_status(
+                                        f"Processing {processed_count} of {len(files_to_process)} files ({percentage}%)..."
+                                    )
 
-                        except Exception as e:
-                            print(f"Error reading metadata: {e}")
-                            processed_count += 1
+                            except Exception as e:
+                                print(f"Error reading metadata: {e}")
+                                processed_count += 1
 
-                # Add to database
-                count = self.db.add_files_batch(metadata_list)
+                    # Add to database
+                    count = self.db.add_files_batch(metadata_list)
 
-                self.update_status(f"Scan complete: {count} files added to library")
+                    self.update_status(
+                        f"Scan complete: {count} processed, {skipped_count} skipped, {total_files} total"
+                    )
+                else:
+                    self.update_status(f"All {total_files} files are up to date - nothing to process!")
 
                 # Refresh library view
                 self.after(100, self._refresh_library)
