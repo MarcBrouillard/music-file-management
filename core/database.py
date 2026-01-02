@@ -34,7 +34,8 @@ class MusicDatabase:
     def _connect(self):
         """Establish database connection."""
         try:
-            self.conn = sqlite3.connect(self.db_path)
+            # Allow connection to be used across threads
+            self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row  # Enable column access by name
         except Exception as e:
             print(f"Error connecting to database: {e}")
