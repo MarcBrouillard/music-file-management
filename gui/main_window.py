@@ -61,6 +61,7 @@ class MainWindow(ctk.CTk):
         self.current_folder = None
         self.all_files = []
         self.selected_files = []
+        self.scan_stop_event = threading.Event()  # For stopping scan
 
         # Configure grid
         self.grid_columnconfigure(1, weight=1)
@@ -229,8 +230,13 @@ class MainWindow(ctk.CTk):
             self.update_status("Please select a folder first")
             return
 
+        # Clear stop event
+        self.scan_stop_event.clear()
+
         self.update_status("Scanning library...")
-        self.scan_btn.configure(state="disabled")
+
+        # Change button to "Stop Scan"
+        self.scan_btn.configure(text="⏹ Stop Scan", command=self._stop_scan)
 
         def scan_thread():
             try:
@@ -300,6 +306,11 @@ class MainWindow(ctk.CTk):
 
                         # Process results as they complete
                         for future in as_completed(future_to_file):
+                            # Check if stop was requested
+                            if self.scan_stop_event.is_set():
+                                self.update_status(f"Scan stopped by user at {processed_count}/{len(files_to_process)} files")
+                                break
+
                             try:
                                 metadata = future.result()
                                 if metadata:
@@ -318,19 +329,26 @@ class MainWindow(ctk.CTk):
                                 print(f"Error reading metadata: {e}")
                                 processed_count += 1
 
-                    # Add to database with batch commit settings
-                    batch_settings = self.settings.get('batch_commit', {})
-                    count = self.db.add_files_batch(
-                        metadata_list,
-                        min_batch=batch_settings.get('min_records', 100),
-                        max_batch=batch_settings.get('max_records', 1000)
-                    )
+                    # Add to database with batch commit settings (even if stopped)
+                    if len(metadata_list) > 0:
+                        batch_settings = self.settings.get('batch_commit', {})
+                        count = self.db.add_files_batch(
+                            metadata_list,
+                            min_batch=batch_settings.get('min_records', 100),
+                            max_batch=batch_settings.get('max_records', 1000)
+                        )
 
-                    self.update_status(
-                        f"Scan complete: {count} processed, {skipped_count} skipped, {total_files} total"
-                    )
-                else:
-                    self.update_status(f"All {total_files} files are up to date - nothing to process!")
+                        if self.scan_stop_event.is_set():
+                            self.update_status(
+                                f"Scan stopped: {count} saved to database, {skipped_count} skipped, {total_files} total found"
+                            )
+                        else:
+                            self.update_status(
+                                f"Scan complete: {count} processed, {skipped_count} skipped, {total_files} total"
+                            )
+                    else:
+                        if not self.scan_stop_event.is_set():
+                            self.update_status(f"All {total_files} files are up to date - nothing to process!")
 
                 # Refresh library view
                 self.after(100, self._refresh_library)
@@ -338,10 +356,21 @@ class MainWindow(ctk.CTk):
             except Exception as e:
                 self.update_status(f"Error scanning: {str(e)}")
             finally:
-                self.after(100, lambda: self.scan_btn.configure(state="normal"))
+                # Restore scan button
+                self.after(100, lambda: self.scan_btn.configure(
+                    text="🔍 Scan Library",
+                    command=self._scan_library,
+                    state="normal"
+                ))
 
         thread = threading.Thread(target=scan_thread, daemon=True)
         thread.start()
+
+    def _stop_scan(self):
+        """Stop the currently running scan."""
+        self.scan_stop_event.set()
+        self.scan_btn.configure(state="disabled")  # Disable until scan thread finishes
+        self.update_status("Stopping scan...")
 
     def _refresh_library(self):
         """Refresh the library view."""
