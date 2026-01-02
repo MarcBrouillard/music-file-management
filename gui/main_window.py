@@ -9,6 +9,7 @@ import json
 import threading
 import os
 from typing import Optional, List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Import core modules
 from core.metadata import MetadataHandler
@@ -212,7 +213,7 @@ class MainWindow(ctk.CTk):
             self.update_status(f"Selected: {folder_path}")
 
     def _scan_library(self):
-        """Scan library in background thread."""
+        """Scan library in background thread with parallel processing."""
         if not self.current_folder:
             self.update_status("Please select a folder first")
             return
@@ -224,18 +225,43 @@ class MainWindow(ctk.CTk):
             try:
                 # Scan directory for music files
                 files = self.metadata_handler.scan_directory(self.current_folder, recursive=True)
+                total_files = len(files)
 
-                self.update_status(f"Found {len(files)} files, reading metadata...")
+                self.update_status(f"Found {total_files} files, reading metadata...")
 
-                # Read metadata for each file
+                # Read metadata in parallel using ThreadPoolExecutor
                 metadata_list = []
-                for i, file_path in enumerate(files):
-                    metadata = self.metadata_handler.read_metadata(file_path)
-                    if metadata:
-                        metadata_list.append(metadata)
+                processed_count = 0
 
-                    if (i + 1) % 10 == 0:
-                        self.update_status(f"Processing {i + 1}/{len(files)}...")
+                # Use number of CPU cores for parallel processing
+                max_workers = min(8, os.cpu_count() or 4)
+
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    # Submit all tasks
+                    future_to_file = {
+                        executor.submit(self.metadata_handler.read_metadata, file_path): file_path
+                        for file_path in files
+                    }
+
+                    # Process results as they complete
+                    for future in as_completed(future_to_file):
+                        try:
+                            metadata = future.result()
+                            if metadata:
+                                metadata_list.append(metadata)
+
+                            processed_count += 1
+
+                            # Update progress more frequently
+                            if processed_count % 5 == 0 or processed_count == total_files:
+                                percentage = int((processed_count / total_files) * 100)
+                                self.update_status(
+                                    f"Processing {processed_count} of {total_files} files ({percentage}%)..."
+                                )
+
+                        except Exception as e:
+                            print(f"Error reading metadata: {e}")
+                            processed_count += 1
 
                 # Add to database
                 count = self.db.add_files_batch(metadata_list)

@@ -6,8 +6,8 @@
     "metadata_tolerance": 0.9,
     "include_fingerprint": false
   },
-  "database_path": "~/.music_manager/library.db",
-  "json_backup_path": "~/.music_manager/backups",
+  "database_path": null,
+  "json_backup_path": null,
   "theme": "dark",
   "auto_backup": true,
   "backup_frequency_days": 7,
