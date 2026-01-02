@@ -1,0 +1,26 @@
+{
+  "default_scan_path": "",
+  "organize_pattern": "{artist}/{album}/{track:02d} - {title}",
+  "duplicate_detection": {
+    "method": "metadata",
+    "metadata_tolerance": 0.9,
+    "include_fingerprint": false
+  },
+  "database_path": "~/.music_manager/library.db",
+  "json_backup_path": "~/.music_manager/backups",
+  "theme": "dark",
+  "auto_backup": true,
+  "backup_frequency_days": 7,
+  "window": {
+    "width": 1200,
+    "height": 800,
+    "remember_size": true
+  },
+  "supported_formats": [
+    ".mp3",
+    ".flac",
+    ".m4a",
+    ".ogg",
+    ".wav"
+  ]
+}
