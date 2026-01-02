@@ -8,6 +8,11 @@
   },
   "database_path": null,
   "json_backup_path": null,
+  "batch_commit": {
+    "min_records": 100,
+    "max_records": 1000,
+    "use_percentage": true
+  },
   "theme": "dark",
   "auto_backup": true,
   "backup_frequency_days": 7,

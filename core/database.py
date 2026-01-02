@@ -157,21 +157,38 @@ class MusicDatabase:
             self.conn.rollback()
             return None
 
-    def add_files_batch(self, metadata_list: List[Dict[str, Any]]) -> int:
+    def add_files_batch(
+        self,
+        metadata_list: List[Dict[str, Any]],
+        batch_size: Optional[int] = None,
+        min_batch: int = 100,
+        max_batch: int = 1000
+    ) -> int:
         """
-        Add multiple files to the database in a batch.
+        Add multiple files to the database in batches with incremental commits.
 
         Args:
             metadata_list: List of metadata dictionaries
+            batch_size: Fixed batch size (overrides min/max if provided)
+            min_batch: Minimum records per commit
+            max_batch: Maximum records per commit
 
         Returns:
             int: Number of files successfully added
         """
         count = 0
+        total_files = len(metadata_list)
+
         try:
             cursor = self.conn.cursor()
 
-            for metadata in metadata_list:
+            # Calculate optimal batch size if not provided
+            if batch_size is None:
+                # Commit every 1% with min/max constraints
+                batch_size = min(max_batch, max(min_batch, total_files // 100))
+
+            # Process in batches
+            for i, metadata in enumerate(metadata_list):
                 try:
                     cursor.execute('''
                         INSERT OR REPLACE INTO music_files (
@@ -200,11 +217,19 @@ class MusicDatabase:
                         datetime.now()
                     ))
                     count += 1
+
+                    # Commit every batch_size records
+                    if (i + 1) % batch_size == 0:
+                        self.conn.commit()
+                        print(f"Committed batch: {count}/{total_files} files")
+
                 except Exception as e:
                     print(f"Error adding file {metadata.get('file_path')}: {e}")
                     continue
 
+            # Final commit for any remaining records
             self.conn.commit()
+            print(f"Final commit: {count}/{total_files} files total")
 
         except Exception as e:
             print(f"Error in batch insert: {e}")

@@ -318,8 +318,13 @@ class MainWindow(ctk.CTk):
                                 print(f"Error reading metadata: {e}")
                                 processed_count += 1
 
-                    # Add to database
-                    count = self.db.add_files_batch(metadata_list)
+                    # Add to database with batch commit settings
+                    batch_settings = self.settings.get('batch_commit', {})
+                    count = self.db.add_files_batch(
+                        metadata_list,
+                        min_batch=batch_settings.get('min_records', 100),
+                        max_batch=batch_settings.get('max_records', 1000)
+                    )
 
                     self.update_status(
                         f"Scan complete: {count} processed, {skipped_count} skipped, {total_files} total"
