@@ -87,9 +87,9 @@ class MainWindow(ctk.CTk):
 
     def _create_header(self):
         """Create the header toolbar."""
-        header_frame = ctk.CTkFrame(self, height=60, corner_radius=0)
+        header_frame = ctk.CTkFrame(self, height=70, corner_radius=0)
         header_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=0, pady=0)
-        header_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        header_frame.grid_columnconfigure(3, weight=1)
 
         # Browse folder button
         self.browse_btn = ctk.CTkButton(
@@ -98,7 +98,7 @@ class MainWindow(ctk.CTk):
             command=self._browse_folder,
             width=150
         )
-        self.browse_btn.grid(row=0, column=0, padx=10, pady=15)
+        self.browse_btn.grid(row=0, column=0, padx=10, pady=10)
 
         # Scan library button
         self.scan_btn = ctk.CTkButton(
@@ -107,7 +107,7 @@ class MainWindow(ctk.CTk):
             command=self._scan_library,
             width=150
         )
-        self.scan_btn.grid(row=0, column=1, padx=10, pady=15)
+        self.scan_btn.grid(row=0, column=1, padx=10, pady=10)
 
         # Refresh button
         self.refresh_btn = ctk.CTkButton(
@@ -116,7 +116,16 @@ class MainWindow(ctk.CTk):
             command=self._refresh_library,
             width=150
         )
-        self.refresh_btn.grid(row=0, column=2, padx=10, pady=15)
+        self.refresh_btn.grid(row=0, column=2, padx=10, pady=10)
+
+        # Current folder label
+        self.folder_label = ctk.CTkLabel(
+            header_frame,
+            text="No folder selected",
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        self.folder_label.grid(row=0, column=3, sticky="ew", padx=20, pady=10)
 
     def _create_sidebar(self):
         """Create the sidebar navigation."""
@@ -210,6 +219,8 @@ class MainWindow(ctk.CTk):
         folder_path = ctk.filedialog.askdirectory(title="Select Music Folder")
         if folder_path:
             self.current_folder = folder_path
+            # Update folder label in header
+            self.folder_label.configure(text=f"📁 {folder_path}")
             self.update_status(f"Selected: {folder_path}")
 
     def _scan_library(self):
